@@ -47,10 +47,9 @@ class App(QWidget):
         self.frames = []
         self.indices = []
         self.time = []
-        self.arduino = Arduino("COM3")
         with open(os.path.join(self.cwd, "config.json"), "r") as file:
             self.config = json.load(file)
-        #self.arduino = Arduino(self.config["arduino_port"])
+        self.arduino = Arduino(self.config["arduino_port"])
         self.start_acquisition_thread()
         self.stop_acquisition_signal = False
         self.close_signal = False
