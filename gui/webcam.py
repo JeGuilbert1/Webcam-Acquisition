@@ -14,20 +14,21 @@ class ImageThread(QThread):
     changePixmap = pyqtSignal(QImage)
 
     def run(self):
-        """Acquire webcam images and emit signal to update image"""
+        """Acquire webcam images and emit signal to update video preview"""
         ex.cap = cv2.VideoCapture(0)
         ex.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
         ex.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
         while not ex.close_signal:
-            ret, frame = ex.cap.read()
-            if ret:
-                rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                frame_index = ex.arduino.frame_index
-                if frame_index > 0 and ex.stop_acquisition_signal is False:
-                    ex.frames.append(frame)
+            return_value, frame = ex.cap.read()
+            if return_value is True:
+                if ex.saving is True:
+                    frame_index = ex.arduino.frame_index
                     ex.indices.append(frame_index-1)
-                h, w, ch = rgbImage.shape
-                bytesPerLine = ch * w
+                    ex.time.append(ex.cap.get(cv2.CAP_PROP_POS_MSEC))
+                    ex.frames.append(frame)
+                rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                h,w,ch = rgbImage.shape
+                bytesPerLine = ch*w
                 convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
                 p = convertToQtFormat.scaled(960, 540, Qt.KeepAspectRatio)
                 self.changePixmap.emit(p)
@@ -43,19 +44,23 @@ class App(QWidget):
         self.top = 10
         self.width = 600
         self.height = 800
-        self.open_acquisition_thread()
         self.frames = []
         self.indices = []
-        self.stop_acquisition_signal = False
-        self.close_signal = False
+        self.time = []
+        self.arduino = Arduino("COM3")
         with open(os.path.join(self.cwd, "config.json"), "r") as file:
             self.config = json.load(file)
-        self.arduino = Arduino(self.config["arduino_port"])
+        #self.arduino = Arduino(self.config["arduino_port"])
+        self.start_acquisition_thread()
+        self.stop_acquisition_signal = False
+        self.close_signal = False
+        self.saving = False
+        self.saving_threads_started = False
         self.initUI()
 
     @pyqtSlot(QImage)
-    def setImage(self, image):
-        """Update the image in the GUI"""
+    def set_preview(self, image):
+        """Update the video preview in the GUI"""
         self.label.setPixmap(QPixmap.fromImage(image))
 
     def closeEvent(self, *args, **kwargs):
@@ -92,24 +97,27 @@ class App(QWidget):
         self.experiment_name_window.addWidget(self.resolution_combo)
         self.settings_window.addLayout(self.experiment_name_window)
 
-        self.directory_window = QHBoxLayout()
+        self.save_window = QHBoxLayout()
         self.directory_label = QLabel("Directory")
-        self.directory_window.addWidget(self.directory_label)
+        self.save_window.addWidget(self.directory_label)
         self.directory_cell = QLineEdit()
         self.directory_cell.setMinimumWidth(150)
         self.directory_cell.setReadOnly(True)
-        self.directory_window.addWidget(self.directory_cell)
-        self.directory_save_files_button = QPushButton("Start Acquisition")
-        self.directory_save_files_button.setIcon(QIcon(os.path.join("gui","icons","player-play.png")))
-        self.directory_save_files_button.setEnabled(False)
-        self.directory_save_files_button.clicked.connect(self.enable_directory)
-        self.directory_window.addWidget(self.directory_save_files_button)
+        self.save_window.addWidget(self.directory_cell)
+        self.browse_button = QPushButton("Select directory")
+        self.browse_button.clicked.connect(self.browse)
+        self.save_window.addWidget(self.browse_button)
+        self.start_button = QPushButton("Start Acquisition")
+        self.start_button.setIcon(QIcon(os.path.join("gui","icons","player-play.png")))
+        self.start_button.setEnabled(False)
+        self.start_button.clicked.connect(self.start_saving)
+        self.save_window.addWidget(self.start_button)
         self.stop_button = QPushButton("Stop Acquisition")
         self.stop_button.setIcon(QIcon(os.path.join("gui","icons","player-stop.png")))
         self.stop_button.setEnabled(False)
-        self.stop_button.clicked.connect(self.stop)
-        self.directory_window.addWidget(self.stop_button)
-        self.settings_window.addLayout(self.directory_window)
+        self.stop_button.clicked.connect(self.stop_saving)
+        self.save_window.addWidget(self.stop_button)
+        self.settings_window.addLayout(self.save_window)
 
         self.main_layout.addLayout(self.settings_window)
 
@@ -148,57 +156,63 @@ class App(QWidget):
 
     def change_brightness(self, value):
         self.cap.set(cv2.CAP_PROP_BRIGHTNESS, value)
-    def open_acquisition_thread(self):
+        
+    def start_acquisition_thread(self):
         """Start the thread responsible for acquiring webcam frames"""
-        print("acquisition thread open")
         self.acquisition_thread = ImageThread(self)
-        self.acquisition_thread.changePixmap.connect(self.setImage)
+        self.acquisition_thread.changePixmap.connect(self.set_preview)
         self.acquisition_thread.start()
 
-    def open_read_serial_thread(self):
+    def start_read_serial_thread(self):
         """Start the thread responsible for reading the Arduino serial output"""
-        print("serial thread open")
-        self.arduino.open_read_serial_thread()
+        self.arduino.start_read_serial_thread()
 
-    def open_save_images_thread(self):
+    def start_save_images_thread(self):
         """Start the thread responsible for image saving"""
-        print("save images thread open")
         self.save_images_thread = Thread(target=self.save_images)
         self.save_images_thread.start()
 
     def save_images(self):
-        """Add buffered frames to the video and release it when done. Save indices array."""
+        """Add buffered frames to the video and release when done. Save indices and time arrays."""
         while not self.close_signal:
-            if len(self.frames) > 0:
-                self.video_feed.write(self.frames.pop(0))
-            else:
-                if self.stop_acquisition_signal:
-                    print("about to break")
-                    break
-        try:
-            self.video_feed.release()
-            np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"indices.npy"), self.indices)
-        except Exception as err:
-            print(err)
-            pass
+            while self.saving is True:
+                if len(self.frames) > 0:
+                    self.video_feed.write(self.frames.pop(0))
+            if self.request_save is True:
+                self.video_feed.release()
+                np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"indices.npy"), self.indices)
+                self.time = np.array(self.time)
+                self.time = (self.time-self.time[0])/1000 #time from 1rst saved frame in s
+                np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"time.npy"), self.time)
+                self.indices = []
+                self.time = []
+                self.request_save = False
 
     def verify_name(self):
         """Verify that experiment name is not empty"""
-        self.directory_save_files_button.setEnabled(self.experiment_name_cell.text() != "")
+        self.start_button.setEnabled(self.experiment_name_cell.text() != "")
         
-    def enable_directory(self):
-        """Choose the directory in which to save the video and start the serial read and image saving threads."""
+    def browse(self):
+        """Choose the directory in which to save the video"""
         self.directory = QFileDialog.getExistingDirectory(self, "Select Directory")
-        if self.check_override():
-            self.directory_cell.setText(self.directory)
-            self.directory_save_files_button.setEnabled(False)
+        self.directory_cell.setText(self.directory)
+        self.start_button.setEnabled(True)
+    
+    def start_saving(self):
+        """Start the serial read and image saving threads."""
+        if self.check_overwrite():
+            self.saving = True
+            self.request_save = True
+            self.start_button.setEnabled(False)
             self.resolution_combo.setEnabled(False)
             self.stop_button.setEnabled(True)
             self.video_feed = cv2.VideoWriter(os.path.join(self.directory, self.experiment_name_cell.text(), f"{self.experiment_name_cell.text()}.mp4"), cv2.VideoWriter_fourcc(*'mp4v'), 30, (int(self.cap.get(3)),int(self.cap.get(4))))
-            self.open_read_serial_thread()
-            self.open_save_images_thread()
+            if self.saving_threads_started is False:
+                self.start_read_serial_thread()
+                self.start_save_images_thread()
+                self.saving_threads_started = True
 
-    def check_override(self):
+    def check_overwrite(self):
         """ Check if experiment with the same name already exists"""
         if os.path.isdir(
             os.path.join(
@@ -208,8 +222,8 @@ class App(QWidget):
         ):
             button = QMessageBox.question(
                 self,
-                "Directory already exists",
-                "Directory already exists. \n Do you want to continue?",
+                "File name already exists",
+                "File name already exists. \n Do you want to overwrite?",
             )
             if button == QMessageBox.Yes:
                 return True
@@ -222,13 +236,14 @@ class App(QWidget):
             ))
             return True
 
-    def stop(self):
-        """Send a signal to stop acquiring new frames"""
-        print("stop signal")
+    def stop_saving(self):
+        """Send a signal to stop saving new frames"""
         self.stop_acquisition_signal = True
+        self.saving = False
         self.arduino.acquisition_running = False
         self.stop_button.setEnabled(False)
-        print(self.stop_acquisition_signal)
+        self.start_button.setEnabled(True)
+        self.resolution_combo.setEnabled(True)
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
