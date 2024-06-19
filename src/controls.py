@@ -29,10 +29,22 @@ class Arduino():
             buffer_string = buffer_string + self.serial.read(self.serial.inWaiting()).decode("utf-8")
             if '\n' in buffer_string:
                 lines = buffer_string.split('\n')
-                self.frame_index = int(lines[-2])
+                con_buffer, frame_buffer = [] , []
+                for i in lines[:-1]:
+                    if ("z" in i):
+                        con_buffer += i
+                    elif "U" in i:
+                        continue
+                    else:
+                        frame_buffer += i
+                self.frame_index = int(frame_buffer[-2])
                 buffer_string = lines[-1]
 
     def reset(self):
         """Send Reset command to the Arduino, which makes its pulse count 0"""
         self.serial.write("reset".encode('utf-8'))
+        self.serial.read(self.serial.in_waiting)
+
+    def set_zero_N2(self):
+        self.serial.write("U\r\n".encode('utf-8'))
         self.serial.read(self.serial.in_waiting)
