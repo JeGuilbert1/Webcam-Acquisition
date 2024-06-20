@@ -11,6 +11,7 @@ class Arduino():
         """
         self.port = port
         self.frame_index = 0
+        self.con_index = []
         try:
             self.serial= serial.Serial(port, 9600, timeout=0.1)
             self.reset()
@@ -26,18 +27,27 @@ class Arduino():
         """Read the serial output and set the last read line as the frame index"""
         buffer_string = ''
         while self.acquisition_running:
-            buffer_string = buffer_string + self.serial.read(self.serial.inWaiting()).decode("utf-8")
+            try:
+                buffer_string = buffer_string + self.serial.read(self.serial.inWaiting()).decode("utf-8")
+            except Exception:
+                print("Character error!")
+                continue
             if '\n' in buffer_string:
                 lines = buffer_string.split('\n')
-                con_buffer, frame_buffer = [] , []
+                con_buffer, frame_buffer = [] , [self.frame_index]
                 for i in lines[:-1]:
                     if ("z" in i):
-                        con_buffer += i
+                        con_buffer += "".i
                     elif "U" in i:
                         continue
                     else:
                         frame_buffer += i
-                self.frame_index = int(frame_buffer[-2])
+                frame_value = frame_buffer[-0]
+                if type(frame_value) == str:
+                    self.frame_index = int(frame_buffer[-1])
+                else:
+                    self.frame_index = int(frame_value)
+                self.con_index += ["".join(con_buffer)]
                 buffer_string = lines[-1]
 
     def reset(self):
@@ -46,5 +56,5 @@ class Arduino():
         self.serial.read(self.serial.in_waiting)
 
     def set_zero_N2(self):
-        self.serial.write("U\r\n".encode('utf-8'))
+        self.serial.write("U\r".encode('utf-8'))
         self.serial.read(self.serial.in_waiting)

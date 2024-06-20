@@ -24,6 +24,8 @@ class ImageThread(QThread):
                 if ex.saving is True:
                     frame_index = ex.arduino.frame_index
                     ex.indices.append(frame_index-1)
+                    ex.concentrations += [ex.arduino.con_index]
+                    ex.arduino.con_index = []
                     ex.time.append(ex.cap.get(cv2.CAP_PROP_POS_MSEC))
                     ex.frames.append(frame)
                 rgbImage = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
@@ -46,6 +48,7 @@ class App(QWidget):
         self.height = 800
         self.frames = []
         self.indices = []
+        self.concentrations = []
         self.time = []
         with open(os.path.join(self.cwd, "config.json"), "r") as file:
             self.config = json.load(file)
@@ -180,6 +183,8 @@ class App(QWidget):
             if self.request_save is True:
                 self.video_feed.release()
                 np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"indices.npy"), self.indices)
+                with open(os.path.join(self.directory,self.experiment_name_cell.text(),"concentrations.json"), "w") as fp:
+                    json.dump(self.concentrations, fp)
                 self.time = np.array(self.time)
                 self.time = (self.time-self.time[0])/1000 #time from 1rst saved frame in s
                 np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"time.npy"), self.time)
