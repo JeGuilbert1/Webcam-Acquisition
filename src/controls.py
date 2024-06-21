@@ -37,7 +37,7 @@ class Arduino():
                 con_buffer, frame_buffer = [] , [self.frame_index]
                 for i in lines[:-1]:
                     if ("z" in i):
-                        con_buffer += "".i
+                        con_buffer += i
                     elif "U" in i:
                         continue
                     else:
@@ -47,7 +47,8 @@ class Arduino():
                     self.frame_index = int(frame_buffer[-1])
                 else:
                     self.frame_index = int(frame_value)
-                self.con_index += ["".join(con_buffer)]
+                if con_buffer != []:
+                    self.con_index += ["".join(con_buffer)]
                 buffer_string = lines[-1]
 
     def reset(self):

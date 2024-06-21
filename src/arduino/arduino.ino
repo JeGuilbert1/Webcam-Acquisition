@@ -26,13 +26,14 @@ void loop(){
     if (receivedChar == '\n') {
       MessageBuffer = recievedMessage;  // Print the received message in the Serial monitor
       recievedMessage = "";  // Reset the received message
+      Serial.println(MessageBuffer);
     } else {
       recievedMessage += receivedChar;  // Append characters to the received message
     }
   }
 
   Serial.println(pulseCount);
-  Serial.println(MessageBuffer);
+  //Serial.println(MessageBuffer);
   if(Serial.available()){
         String serial_command = Serial.readStringUntil('\n');
         if (serial_command == "reset"){

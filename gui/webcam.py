@@ -24,7 +24,7 @@ class ImageThread(QThread):
                 if ex.saving is True:
                     frame_index = ex.arduino.frame_index
                     ex.indices.append(frame_index-1)
-                    ex.concentrations += [ex.arduino.con_index]
+                    ex.concentrations += [ex.arduino.con_index + [ex.cap.get(cv2.CAP_PROP_POS_MSEC)]]
                     ex.arduino.con_index = []
                     ex.time.append(ex.cap.get(cv2.CAP_PROP_POS_MSEC))
                     ex.frames.append(frame)
