@@ -58,4 +58,3 @@ class Arduino():
 
     def set_zero_N2(self):
         self.serial.write("U\r".encode('utf-8'))
-        self.serial.read(self.serial.in_waiting)

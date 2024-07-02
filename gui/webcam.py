@@ -25,6 +25,11 @@ class ImageThread(QThread):
                     frame_index = ex.arduino.frame_index
                     ex.indices.append(frame_index-1)
                     ex.concentrations += [ex.arduino.con_index + [ex.cap.get(cv2.CAP_PROP_POS_MSEC)]]
+                    try:
+                        ex.shown_concen = int(ex.concentrations[-1][-2][-8:-2])/1000
+                        ex.concentration_cell.setText(f"{ex.shown_concen}" + " % CO2")
+                    except Exception:
+                        continue
                     ex.arduino.con_index = []
                     ex.time.append(ex.cap.get(cv2.CAP_PROP_POS_MSEC))
                     ex.frames.append(frame)
@@ -34,6 +39,9 @@ class ImageThread(QThread):
                 convertToQtFormat = QImage(rgbImage.data, w, h, bytesPerLine, QImage.Format_RGB888)
                 p = convertToQtFormat.scaled(960, 540, Qt.KeepAspectRatio)
                 self.changePixmap.emit(p)
+                if ex.set_zero_val:
+                    ex.arduino.set_zero_N2()
+                    ex.set_zero_val = False
 
 class App(QWidget):
 
@@ -49,6 +57,7 @@ class App(QWidget):
         self.frames = []
         self.indices = []
         self.concentrations = []
+        self.shown_concen = "NaN"
         self.time = []
         with open(os.path.join(self.cwd, "config.json"), "r") as file:
             self.config = json.load(file)
@@ -58,6 +67,7 @@ class App(QWidget):
         self.close_signal = False
         self.saving = False
         self.saving_threads_started = False
+        self.set_zero_val = False
         self.initUI()
 
     @pyqtSlot(QImage)
@@ -120,6 +130,17 @@ class App(QWidget):
         self.stop_button.clicked.connect(self.stop_saving)
         self.save_window.addWidget(self.stop_button)
         self.settings_window.addLayout(self.save_window)
+
+        self.con_window = QHBoxLayout()
+        self.concentration_label = QLabel("CO2 concentration:")
+        self.con_window.addWidget(self.concentration_label)
+        self.concentration_cell = QLabel(self.shown_concen + " % CO2")
+        self.con_window.addWidget(self.concentration_cell)
+        self.zero_button = QPushButton("Set nitrogen zero")
+        self.zero_button.setEnabled(True)
+        self.zero_button.clicked.connect(self.set_zero)
+        self.con_window.addWidget(self.zero_button)
+        self.settings_window.addLayout(self.con_window)
 
         self.main_layout.addLayout(self.settings_window)
 
@@ -248,6 +269,9 @@ class App(QWidget):
         self.stop_button.setEnabled(False)
         self.start_button.setEnabled(True)
         self.resolution_combo.setEnabled(True)
+
+    def set_zero(self):
+        self.set_zero_val = True
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
