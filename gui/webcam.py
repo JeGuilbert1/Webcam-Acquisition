@@ -20,9 +20,11 @@ class ImageThread(QThread):
         ex.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
         while not ex.close_signal:
             return_value, frame = ex.cap.read()
+            frame = frame[ex.crop[0]:ex.crop[1], ex.crop[2]:ex.crop[3]]
             if return_value is True:
                 if ex.saving is True:
                     frame_index = ex.arduino.frame_index
+                    print("Frame index: {}".format(frame_index))
                     ex.indices.append(frame_index-1)
                     ex.time.append(ex.cap.get(cv2.CAP_PROP_POS_MSEC))
                     ex.frames.append(frame)
@@ -44,6 +46,8 @@ class App(QWidget):
         self.top = 10
         self.width = 600
         self.height = 800
+        self.crop = [0, 1080, 0, 1920]
+        self.res = [1080, 1920]
         self.frames = []
         self.indices = []
         self.time = []
@@ -125,7 +129,7 @@ class App(QWidget):
         self.exposure_label = QLabel("Exposure")
         self.exposure_window.addWidget(self.exposure_label)
         self.exposure_slider = QSlider(Qt.Horizontal, self)
-        self.exposure_slider.setRange(0, 100)
+        self.exposure_slider.setRange(-75, 75)
         self.exposure_slider.setValue(0)
         self.exposure_slider.valueChanged.connect(self.change_brightness)
         self.exposure_window.addWidget(self.exposure_slider)
@@ -140,21 +144,25 @@ class App(QWidget):
         self.show()
 
     def change_resolution(self):
+        center_x, center_y = 1920 // 2, 1080 //2
         try:
             if self.resolution_combo.currentText() == "1080p":
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1920)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 1080)
+                self.crop = [0, 1080, 0, 1920]
+                self.res = [1920, 1080]
             if self.resolution_combo.currentText() == "720p":
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 1280)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 720)
+                new_width, new_height = 1280, 720
+                self.crop = [center_y-new_height//2, center_y+new_height//2, center_x-new_width//2, center_x+new_width//2]
+                self.res = [1280, 720]
             if self.resolution_combo.currentText() == "480p":
-                self.cap.set(cv2.CAP_PROP_FRAME_WIDTH, 640)
-                self.cap.set(cv2.CAP_PROP_FRAME_HEIGHT, 480)
+                new_width, new_height = 640, 480
+                self.crop = [center_y-new_height//2, center_y+new_height//2, center_x-new_width//2, center_x+new_width//2]
+                self.res = [640, 480]
         except Exception:
             pass
 
     def change_brightness(self, value):
         self.cap.set(cv2.CAP_PROP_BRIGHTNESS, value)
+        
         
     def start_acquisition_thread(self):
         """Start the thread responsible for acquiring webcam frames"""
@@ -177,12 +185,16 @@ class App(QWidget):
             while self.saving is True:
                 if len(self.frames) > 0:
                     self.video_feed.write(self.frames.pop(0))
-            if self.request_save is True:
+            if (self.request_save is True) and (self.stop_acquisition_signal is True):
                 self.video_feed.release()
+                if len(set(self.indices)) not in [0, 1]:
+                    print("Indices success, saved {} different values".format(len(set(self.indices))))
+                else:
+                    print("Indices failure")
                 np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"indices.npy"), self.indices)
-                self.time = np.array(self.time)
-                self.time = (self.time-self.time[0])/1000 #time from 1rst saved frame in s
-                np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"time.npy"), self.time)
+                # self.time = np.array(self.time)
+                # self.time = (self.time-self.time[0])/1000 #time from 1rst saved frame in s
+                # np.save(os.path.join(self.directory,self.experiment_name_cell.text(),"time.npy"), self.time)
                 self.indices = []
                 self.time = []
                 self.request_save = False
@@ -200,12 +212,15 @@ class App(QWidget):
     def start_saving(self):
         """Start the serial read and image saving threads."""
         if self.check_overwrite():
+            self.indices =  []
             self.saving = True
             self.request_save = True
+            self.stop_acquisition_signal = False
             self.start_button.setEnabled(False)
             self.resolution_combo.setEnabled(False)
             self.stop_button.setEnabled(True)
-            self.video_feed = cv2.VideoWriter(os.path.join(self.directory, self.experiment_name_cell.text(), f"{self.experiment_name_cell.text()}.mp4"), cv2.VideoWriter_fourcc(*'mp4v'), 30, (int(self.cap.get(3)),int(self.cap.get(4))))
+            # self.video_feed = cv2.VideoWriter(os.path.join(self.directory, self.experiment_name_cell.text(), f"{self.experiment_name_cell.text()}.mp4"), cv2.VideoWriter_fourcc(*'mp4v'), 30, (int(self.cap.get(3)),int(self.cap.get(4))))
+            self.video_feed = cv2.VideoWriter(os.path.join(self.directory, self.experiment_name_cell.text(), f"{self.experiment_name_cell.text()}.mp4"), cv2.VideoWriter_fourcc(*'mp4v'), 30, (self.res[0],self.res[1]))
             if self.saving_threads_started is False:
                 self.start_read_serial_thread()
                 self.start_save_images_thread()
@@ -239,7 +254,8 @@ class App(QWidget):
         """Send a signal to stop saving new frames"""
         self.stop_acquisition_signal = True
         self.saving = False
-        self.arduino.acquisition_running = False
+        # self.arduino.acquisition_running = False
+        self.arduino.reset()
         self.stop_button.setEnabled(False)
         self.start_button.setEnabled(True)
         self.resolution_combo.setEnabled(True)
