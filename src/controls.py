@@ -55,3 +55,21 @@ class Arduino():
 
     def set_zero_N2(self):
         self.serial.write("U\r".encode('utf-8'))
+
+    def set_con(self, con):
+        self.serial.write(f"{con}%".encode('utf-8'))
+
+    def analog_cont(self):
+        self.serial.write(f"read target".encode('utf-8'))
+
+    def MixerToggle(self):
+        self.serial.write(f"MixerOn".encode('utf-8'))
+
+    def purgeCO2(self):
+        self.serial.write(f"purgeCO2".encode('utf-8'))
+
+    def purgeAir(self):
+        self.serial.write(f"purgeAir".encode('utf-8'))
+
+    def Flow_off(self):
+        self.serial.write(f"off".encode('utf-8'))

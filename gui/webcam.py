@@ -44,6 +44,24 @@ class ImageThread(QThread):
                 if ex.set_zero_val:
                     ex.arduino.set_zero_N2()
                     ex.set_zero_val = False
+                if ex.set_con:
+                    ex.arduino.set_con(ex.des_con)
+                    ex.set_con = False
+                if ex.analog_cont:
+                    ex.arduino.analog_cont()
+                    ex.analog_cont = False
+                if ex.mixer_bool:
+                    ex.arduino.MixerToggle()
+                    ex.mixer_bool = False
+                if ex.purgeair:
+                    ex.arduino.purgeAir()
+                    ex.purgeair = False
+                if ex.purgeco2:
+                    ex.arduino.purgeCO2()
+                    ex.purgeco2 = False
+                if ex.flow_off:
+                    ex.arduino.Flow_off()
+                    ex.flow_off = False
 
 class App(QWidget):
 
@@ -70,6 +88,13 @@ class App(QWidget):
         self.saving = False
         self.saving_threads_started = False
         self.set_zero_val = False
+        self.set_con = False
+        self.des_con = ""
+        self.mixer_bool = False
+        self.purgeair = False
+        self.purgeco2 = False
+        self.flow_off = False
+        self.analog_cont = False
         self.initUI()
 
     @pyqtSlot(QImage)
@@ -144,6 +169,49 @@ class App(QWidget):
         self.con_window.addWidget(self.zero_button)
         self.settings_window.addLayout(self.con_window)
 
+        self.con_control_window = QHBoxLayout()
+        self.con_control_purgeair = QPushButton("Purge Air")
+        self.con_control_purgeair.setEnabled(True)
+        self.con_control_purgeair.clicked.connect(self.purge_Air)
+        self.con_control_window.addWidget(self.con_control_purgeair)
+
+        self.con_control_purgeCO2 = QPushButton("Purge CO2")
+        self.con_control_purgeCO2.setEnabled(True)
+        self.con_control_purgeCO2.clicked.connect(self.purge_CO2)
+        self.con_control_window.addWidget(self.con_control_purgeCO2)
+
+        self.con_control_off = QPushButton("Flow Off")
+        self.con_control_off.setEnabled(True)
+        self.con_control_off.clicked.connect(self.Flow_Off)
+        self.con_control_window.addWidget(self.con_control_off)
+
+        self.con_control_toggle = QPushButton("Auto Mixer", self)
+        self.con_control_toggle.setCheckable(True)
+        self.con_control_toggle.clicked.connect(self.changeColor)
+        self.con_control_toggle.clicked.connect(self.MixerToggle)
+        self.con_control_toggle.setStyleSheet("background-color : red")
+        self.con_control_window.addWidget(self.con_control_toggle)
+
+        self.settings_window.addLayout(self.con_control_window)
+        self.con_control = QLabel('Concentration demandée:')
+        self.con_control_window.addWidget(self.con_control)
+        self.con_control_cell = QLineEdit()
+        self.con_control_cell.setMaximumWidth(100)
+        self.con_control_window.addWidget(self.con_control_cell)
+        self.con_control_cell_ind = QLabel('%')
+        self.con_control_window.addWidget(self.con_control_cell_ind)
+        self.con_control_button = QPushButton("Apply")
+        self.con_control_button.setEnabled(True)
+        self.con_control_button.clicked.connect(self.send_con)
+        self.con_control_window.addWidget(self.con_control_button)
+
+        self.con_control_analog = QPushButton("Analog Control", self)
+        self.con_control_analog.setCheckable(True)
+        self.con_control_analog.clicked.connect(self.changeColor2)
+        self.con_control_analog.clicked.connect(self.Analog_control)
+        self.con_control_analog.setStyleSheet("background-color : red")
+        self.con_control_window.addWidget(self.con_control_analog)
+
         self.main_layout.addLayout(self.settings_window)
 
 
@@ -164,6 +232,17 @@ class App(QWidget):
         self.main_layout.addLayout(self.preview_window)
 
         self.show()
+
+    def changeColor(self):
+        if self.con_control_toggle.isChecked():
+            self.con_control_toggle.setStyleSheet("background-color : green")
+        else:
+            self.con_control_toggle.setStyleSheet("background-color : red")
+    def changeColor2(self):
+        if self.con_control_analog.isChecked():
+            self.con_control_analog.setStyleSheet("background-color : green")
+        else:
+            self.con_control_analog.setStyleSheet("background-color : red")
 
     def change_resolution(self):
         center_x, center_y = 1920 // 2, 1080 //2
@@ -284,6 +363,19 @@ class App(QWidget):
 
     def set_zero(self):
         self.set_zero_val = True
+    def send_con(self):
+        self.des_con = self.con_control_cell.text()
+        self.set_con = True
+    def Analog_control(self):
+        self.analog_cont = True
+    def MixerToggle(self):
+        self.mixer_bool = True
+    def purge_CO2(self):
+        self.purgeco2 = True
+    def purge_Air(self):
+        self.purgeair = True
+    def Flow_Off(self):
+        self.flow_off = True
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
